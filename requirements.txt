@@ -1,0 +1,23 @@
+# pymongo 
+# pymongo[srv] 
+numpy
+openai
+openpyxl
+langchain-community
+langchain-huggingface
+unstructured[all-docs]
+langchain-chroma
+transformers
+torch
+scikit-learn
+fastapi 
+uvicorn
+gunicorn
+pandas
+streamlit
+pymilvus
+
+PyMuPDF
+
+# nims 
+langchain-nvidia-ai-endpoints==0.1.6
