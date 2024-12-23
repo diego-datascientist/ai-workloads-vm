@@ -5,9 +5,8 @@ from hashlib import md5
 from typing import Optional, Tuple
 import streamlit as st
 
-# from src.milvus_embed import get_rag_results, process_pdf_and_store_embeddings
+from src.milvus_embed import get_rag_results, process_pdf_and_store_embeddings
 from src.nims_flow import ingestion, rag_results_nims
-from src.openai_flow import openai_ingestion, rag_results_openai
 from src.llm import chatbot
 
 # Configure logging
@@ -75,7 +74,7 @@ def process_uploaded_file(uploaded_file, flag:bool) -> Optional[str]:
         if flag:
             ingestion(file_path)
         else:
-            openai_ingestion(file_path)
+            process_pdf_and_store_embeddings(file_path)
         logger.info("Processing PDF and storing embeddings.")
         logger.info("File processed and embeddings stored successfully.")
 
@@ -106,7 +105,7 @@ def chatbot_response(query: str, history: list, flag:bool) -> Optional[str]:
         if flag:
             final_answer = rag_results_nims(query)
         else: 
-            relevant = rag_results_openai(query)
+            relevant = get_rag_results(query)
             logger.debug("Generating chatbot response.")
             final_answer = chatbot(query, relevant, conversation_context)
         return final_answer
@@ -162,43 +161,43 @@ def main():
     )
 
     # File uploader allowing multiple files
-    uploaded_files = st.file_uploader("Choose PDF files", type=["pdf"], accept_multiple_files=True)
-    if uploaded_files:
+    uploaded_file = st.file_uploader("Choose PDF files", type=["pdf"])
+    if uploaded_file:
         with st.spinner("Processing the documents..."):
-            for uploaded_file in uploaded_files:
-                document_data_path = None
-                if embedding_model == "NVIDIA Embedding (nv-embedqa-e5-v5)":
-                    document_data_path = process_uploaded_file(uploaded_file, True)
-                else:
-                    document_data_path = process_uploaded_file(uploaded_file, False)
+            # for uploaded_file in uploaded_files:
+            document_data_path = None
+            if embedding_model == "NVIDIA Embedding (nv-embedqa-e5-v5)":
+                document_data_path = process_uploaded_file(uploaded_file, True)
+            else:
+                document_data_path = process_uploaded_file(uploaded_file, False)
 
-                if document_data_path:
-                    st.session_state.uploaded_documents.append(document_data_path)
-                    st.success(f"Document '{uploaded_file.name}' uploaded and processed successfully!")
-                    try:
-                        os.remove(document_data_path)
-                        logger.info(f"Removed file {document_data_path} after processing.")
-                    except Exception as e:
-                        logger.warning(f"Could not remove file {document_data_path}: {e}")
+            if document_data_path:
+                st.session_state.uploaded_documents.append(document_data_path)
+                st.success(f"Document '{uploaded_file.name}' uploaded and processed successfully!")
+                try:
+                    os.remove(document_data_path)
+                    logger.info(f"Removed file {document_data_path} after processing.")
+                except Exception as e:
+                    logger.warning(f"Could not remove file {document_data_path}: {e}")
 
     # User query input
     query = st.text_input("Enter your question here:", placeholder="Type your question...")
 
     if st.button("Get Answer"):
         if query.strip():
-            # if st.session_state.uploaded_documents:
-            with st.spinner("Thinking..."):
-                response= None
-                if llm_model == "NVIDIA Meta Llama3-8b":
-                    response = chatbot_response(query, st.session_state.chat_history, True)
-                else: 
-                    response = chatbot_response(query, st.session_state.chat_history, False)
-                if response:
-                    st.session_state.chat_history.append((query, response))
-                    st.success("Here's my answer:")
-                    st.write(response)
-            # else:
-                # st.warning("Please upload at least one PDF document first!")
+            if st.session_state.uploaded_documents:
+                with st.spinner("Thinking..."):
+                    response= None
+                    if llm_model == "NVIDIA Meta Llama3-8b":
+                        response = chatbot_response(query, st.session_state.chat_history, True)
+                    else: 
+                        response = chatbot_response(query, st.session_state.chat_history, False)
+                    if response:
+                        st.session_state.chat_history.append((query, response))
+                        st.success("Here's my answer:")
+                        st.write(response)
+            else:
+                st.warning("Please upload at least one PDF document first!")
         else:
             st.warning("Please enter a question before submitting!")
 
@@ -208,6 +207,12 @@ def main():
         for i, (user_query, bot_response) in enumerate(st.session_state.chat_history, 1):
             st.write(f"**Q{i}:** {user_query}")
             st.write(f"**A{i}:** {bot_response}")
+
+    # # Optionally, display uploaded documents
+    # if st.session_state.uploaded_documents:
+    #     st.write("### Uploaded Documents")
+    #     for idx, doc_path in enumerate(st.session_state.uploaded_documents, 1):
+    #         st.write(f"{idx}. {os.path.basename(doc_path)}")
 
     st.markdown("Powered By DNN")
 

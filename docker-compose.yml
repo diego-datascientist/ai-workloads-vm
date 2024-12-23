@@ -75,6 +75,29 @@ services:
       - STREAMLIT_SERVER_ENABLECORS=false
       - MILVUS_HOST=milvus-standalone 
       - MILVUS_PORT=19530
+      ###
+      # - APP_VECTORSTORE_URL: "http://milvus:19530"
+      # - APP_VECTORSTORE_NAME: "milvus"
+      # - APP_LLM_MODELNAME: ${APP_LLM_MODELNAME:-"meta/llama3-8b-instruct"}
+      # - APP_LLM_MODELENGINE: nvidia-ai-endpoints
+      # - APP_LLM_SERVERURL: ${APP_LLM_SERVERURL:-"nemollm-inference:8000"}
+      # - APP_EMBEDDINGS_MODELNAME: ${APP_EMBEDDINGS_MODELNAME:-nvidia/nv-embedqa-e5-v5}
+      # - APP_EMBEDDINGS_MODELENGINE: ${APP_EMBEDDINGS_MODELENGINE:-nvidia-ai-endpoints}
+      # - APP_EMBEDDINGS_SERVERURL: ${APP_EMBEDDINGS_SERVERURL:-""}
+      # - APP_TEXTSPLITTER_MODELNAME: Snowflake/snowflake-arctic-embed-l
+      # - APP_TEXTSPLITTER_CHUNKSIZE: 506
+      # - APP_TEXTSPLITTER_CHUNKOVERLAP: 200
+      # - APP_RANKING_MODELNAME: ${APP_RANKING_MODELNAME:-"nvidia/nv-rerankqa-mistral-4b-v3"} 
+      # - APP_RANKING_MODELENGINE: ${APP_RANKING_MODELENGINE:-nvidia-ai-endpoints}
+      # - APP_RANKING_SERVERURL: ${APP_RANKING_SERVERURL:-""}
+      # - NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+      # - APP_RETRIEVER_TOPK: 4
+      # - APP_RETRIEVER_SCORETHRESHOLD: 0.25
+      #   COLLECTION_NAME: ${COLLECTION_NAME:-multi_turn_rag}
+      #   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      #   OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      #   ENABLE_TRACING: false
+      #   LOGLEVEL: ${LOGLEVEL:-INFO}
     # volumes:
     #   - ${DOCKER_VOLUME_DIRECTORY:-.}/app/Data:/application/app/Data
     restart: unless-stopped

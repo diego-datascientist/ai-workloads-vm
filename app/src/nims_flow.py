@@ -1,20 +1,19 @@
 import os
 import logging
 
-# from langchain_community.document_loaders import UnstructuredFileLoader
-# from langchain_unstructured import UnstructuredLoader
+
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings, NVIDIARerank
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
-## ranker 
-from operator import itemgetter
-from langchain_core.runnables.passthrough import RunnableAssign
+# ## ranker 
+# from operator import itemgetter
+# from langchain_core.runnables.passthrough import RunnableAssign
 
 from .process_files import read_file
 
 # from include.utils import create_vectorstore_langchain, get_vectorstore
 
-from .include.utils import create_vectorstore_langchain, get_vectorstore
+from .include.utils import create_vectorstore_langchain, get_vectorstore , get_embedder, get_ranking_model , get_chat_model
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -32,21 +31,16 @@ EMBEDDING_MODEL_NVIDIA = "nvidia/nv-embedqa-e5-v5"
 vs = None
 k = 3
 
-document_embedder = NVIDIAEmbeddings(
-            model=EMBEDDING_MODEL_NVIDIA,
-            # base_url="http://localhost:9080/v1"  
-            base_url="http://nemollm-embedding:8000/v1"  
-        )
+# Embedding Object
+document_embedder = get_embedder(EMBEDDING_MODEL_NVIDIA)
 logger.info("document_embedder initialized successfully.")
 
-
-
-vs = create_vectorstore_langchain(document_embedder=document_embedder)
+# Milvus Database Object
+vs = get_vectorstore(vs, document_embedder=document_embedder)
 
 logger.info("Vector Database initialized.")
 
-ranker = NVIDIARerank( base_url=f"http://ranking-ms:8000/v1", top_n=4, truncate="END")
-logger.info("Ranker initialized successfully.")
+
 
 def ingestion(filename:str, filepath:str="../Data"):
 
@@ -58,7 +52,6 @@ def ingestion(filename:str, filepath:str="../Data"):
 
         chunks = text_splitter.split_text(data)
 
-        print("Chunks", chunks)
         global vs
         vs = get_vectorstore(vs, document_embedder)
         
@@ -67,41 +60,41 @@ def ingestion(filename:str, filepath:str="../Data"):
         logger.info("Ingestion completed successfully.")
         return "Ingestion Successful"
     except Exception as e:
-        vectorstore = None
+        vs = None
         logger.info(f"Ingestion Failed: {e}")
 
 
-def re_rank(q):
-    context_chain = RunnableAssign(
-        {"context": itemgetter("input") | vs.as_retriever(search_kwargs={"k": 40})}
-    )
-    if ranker:
-        logger.info(
-            f"Narrowing the collection from 40 results and further narrowing it to 3 with the reranker."
-        )
-        context_reranker = RunnableAssign(
-            {
-                "context": lambda input: ranker.compress_documents(
-                    query=input['input'], documents=input['context']
-                )
-            }
-        )
+# def re_rank(q):
+#     context_chain = RunnableAssign(
+#         {"context": itemgetter("input") | vs.as_retriever(search_kwargs={"k": 40})}
+#     )
+#     if ranker:
+#         logger.info(
+#             f"Narrowing the collection from 40 results and further narrowing it to 3 with the reranker."
+#         )
+#         context_reranker = RunnableAssign(
+#             {
+#                 "context": lambda input: ranker.compress_documents(
+#                     query=input['input'], documents=input['context']
+#                 )
+#             }
+#         )
 
-        retrieval_chain = context_chain | context_reranker
-    else:
-        retrieval_chain = context_chain 
+#         retrieval_chain = context_chain | context_reranker
+#     else:
+#         retrieval_chain = context_chain 
 
-    # Handling Retrieval failure
-    docs = retrieval_chain.invoke({"input": q})
-    if not docs:
-        logger.warning("Retrieval failed to get any relevant context")
-        return iter(
-            [
-                "No response generated from LLM, make sure your query is relavent to the ingested document."
-            ]
-        )
+#     # Handling Retrieval failure
+#     docs = retrieval_chain.invoke({"input": q})
+#     if not docs:
+#         logger.warning("Retrieval failed to get any relevant context")
+#         return iter(
+#             [
+#                 "No response generated from LLM, make sure your query is relavent to the ingested document."
+#             ]
+#         )
 
-    logger.debug(f"Retrieved documents are: {docs}")
+#     logger.debug(f"Retrieved documents are: {docs}")
 
 
 
@@ -112,11 +105,11 @@ def answer_query(query: str):
     if vs is None:
         vs = create_vectorstore_langchain(document_embedder=document_embedder)
 
-    # ranker check 
-    k = 40 if ranker else 3
-    print("K", k)
-    if ranker:
-        re_rank(query)
+    # # ranker check 
+    # k = 40 if ranker else 3
+    # print("K", k)
+    # if ranker:
+    #     re_rank(query)
 
     
     similar_docs = vs.similarity_search(query, k)
@@ -134,13 +127,7 @@ def answer_query(query: str):
     user_message = "User Question: " + query
     
 
-    inference_client = ChatNVIDIA(
-        # base_url="http://localhost:8000/v1", 
-        base_url="http://nemollm-inference:8000/v1", 
-        temperature=0,
-        top_p=1,
-        max_tokens=1024,
-    )
+    inference_client = get_chat_model()
 
 # Generate response using the local inference model
     response = inference_client.invoke(

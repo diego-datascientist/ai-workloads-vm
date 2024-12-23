@@ -106,5 +106,5 @@ def main():
         logger.error(f"Failed to set up the Milvus collection: {e}")
         exit(1)
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
