@@ -150,5 +150,5 @@ def main():
     milvus_port = int(os.getenv("MILVUS_PORT", DEFAULT_MILVUS_PORT))
     get_milvus_connection(host=milvus_host, port=milvus_port)
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
