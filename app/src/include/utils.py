@@ -67,7 +67,7 @@ def get_openai_chat_model():
     return client
 
 def get_ranking_model():
-    return NVIDIARerank( base_url=f"http://ranking-ms:8000/v1", top_n=4, truncate="END")
+    return NVIDIARerank( base_url=f"http://ranking-ms:8000/v1", top_n=10, truncate="END")
 
 
 def create_vectorstore_langchain(document_embedder: "Embeddings", collection_name: str = "") -> VectorStore:

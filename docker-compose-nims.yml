@@ -26,6 +26,12 @@ services:
             - driver: nvidia
               count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
+        # limits:
+        #   devices:
+        #     - driver: nvidia
+        #       count: 1
+        #       capabilities: [gpu]
+        #   memory: 12g  # Adjust based on available GPU memory
     healthcheck:
       test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/v1/health/ready')"]
       interval: 10s
@@ -44,6 +50,7 @@ services:
     - "8000"
     environment:
       NGC_API_KEY: ${NGC_API_KEY}
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
     user: "${USERID:-1000}"
     shm_size: 16GB
     deploy: 
@@ -51,7 +58,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              # device_ids: ['${EMBEDDING_MS_GPU_ID:-0}']
+              # device_ids: ['${EMBEDDING_MS_GPU_ID:-2}']
+              # count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health/ready"]
