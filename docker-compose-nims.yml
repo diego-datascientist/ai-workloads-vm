@@ -26,6 +26,12 @@ services:
             - driver: nvidia
               count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
+        # limits:
+        #   devices:
+        #     - driver: nvidia
+        #       count: 1
+        #       capabilities: [gpu]
+        #   memory: 12g  # Adjust based on available GPU memory
     healthcheck:
       test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/v1/health/ready')"]
       interval: 10s
@@ -44,14 +50,16 @@ services:
     - "8000"
     environment:
       NGC_API_KEY: ${NGC_API_KEY}
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
     user: "${USERID:-1000}"
     shm_size: 16GB
-    deploy: # using macbook so nvidia driver will not work
+    deploy: 
       resources:
         reservations:
           devices:
             - driver: nvidia
-              # device_ids: ['${EMBEDDING_MS_GPU_ID:-0}']
+              # device_ids: ['${EMBEDDING_MS_GPU_ID:-2}']
+              # count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health/ready"]
@@ -59,34 +67,3 @@ services:
       timeout: 20s
       retries: 3
       start_period: 10m
-    # profiles: ["local-nim", "nemo-retriever"]
-
-  ranking-ms:
-    container_name: nemo-retriever-ranking-microservice
-    image: nvcr.io/nim/nvidia/nv-rerankqa-mistral-4b-v3:1.0.1
-    volumes:
-    - ${MODEL_DIRECTORY}:/opt/nim/.cache
-    ports:
-    - "1976:8000"
-    expose:
-    - "8000"
-    environment:
-      NGC_API_KEY: ${NGC_API_KEY}
-    user: "${USERID:-1000}"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 20s
-      retries: 100
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['${RANKING_MS_GPU_ID:-0}']
-              capabilities: [gpu]
-  #   profiles: ["nemo-retriever"]
-
-# # networks:
-# #   default:
-# #     name: nvidia-rag

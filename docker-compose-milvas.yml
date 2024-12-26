@@ -62,5 +62,6 @@ services:
           devices:
             - driver: nvidia
               capabilities: ["gpu"]
-              device_ids: ['${VECTORSTORE_GPU_DEVICE_ID:-0}']
+              # device_ids: ['${VECTORSTORE_GPU_DEVICE_ID:-0}']
+              count: ${INFERENCE_GPU_COUNT:-all}
 

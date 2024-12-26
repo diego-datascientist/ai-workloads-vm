@@ -1,17 +1,14 @@
 
 import os
+from openai import OpenAI
 from typing import  Optional
-
-from langchain_community.vectorstores import Milvus
 from langchain_core.embeddings import Embeddings
+from langchain_community.vectorstores import Milvus
 from langchain_core.vectorstores import VectorStore
 
-
 from langchain.text_splitter import SentenceTransformersTokenTextSplitter
-
-vector_store_path = "vectorstore.pkl"
-
-TEXT_SPLITER_MODEL_HUGGINGFACE = "snowflake/arctic-embed-l"
+from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings, NVIDIARerank
+from langchain.embeddings import OpenAIEmbeddings
 
 
 NLIST = 128
@@ -21,9 +18,56 @@ SEARCH_NPROBE = 10
 CHUNK_OVERLAP = 200
 INDEX_TYPE = "IVF_FLAT"
 
+TEXT_SPLITER_MODEL_HUGGINGFACE = "snowflake/arctic-embed-l"
+
 DEFAULT_MILVUS_PORT = 19530
 DEFAULT_MILVUS_HOST = "milvus-standalone"
 # DEFAULT_MILVUS_HOST = "localhost"
+
+
+
+def get_embedder(model_name:str):
+    document_embedder = NVIDIAEmbeddings(
+            model=model_name,
+            # base_url="http://localhost:9080/v1"  
+            base_url="http://nemollm-embedding:8000/v1"  
+        )
+    print("document_embedder initialized successfully.")
+    return document_embedder
+
+def get_embedder_openai():
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        print("OPENAI_API_KEY is not set in environment variables.")
+        raise EnvironmentError("OPENAI_API_KEY is not set.")
+    
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    return embeddings
+
+
+
+def get_chat_model():
+    return ChatNVIDIA(
+        # base_url="http://localhost:8000/v1", 
+        base_url="http://nemollm-inference:8000/v1", 
+        temperature=0,
+        top_p=1,
+        max_tokens=1024,
+    )
+
+def get_openai_chat_model():
+    # Retrieve OpenAI API key from environment variables
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        print("OPENAI_API_KEY is not set in environment variables.")
+        raise EnvironmentError("OPENAI_API_KEY is not set.")
+
+    # Set OpenAI API key
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    return client
+
+def get_ranking_model():
+    return NVIDIARerank( base_url=f"http://ranking-ms:8000/v1", top_n=10, truncate="END")
 
 
 def create_vectorstore_langchain(document_embedder: "Embeddings", collection_name: str = "") -> VectorStore:
@@ -37,7 +81,7 @@ def create_vectorstore_langchain(document_embedder: "Embeddings", collection_nam
         VectorStore: A VectorStore object of given vectorstore from langchain.
     """
     if not collection_name:
-        collection_name = os.getenv('MILVAS_NIMS_COLLECTION_NAME', "pdf_embedding")
+        collection_name = os.getenv('MILVAS_NIMS_COLLECTION_NAME', "default_collection")
     
     vectorstore = Milvus(
         document_embedder,
