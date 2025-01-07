@@ -26,7 +26,8 @@ if not OPENAI_API_KEY:
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 client_nims = ChatNVIDIA(
-                base_url=f"http://nemollm-inference:8000/v1",
+                # base_url=f"http://nemollm-inference:8000/v1",
+                base_url=f"http://localhost:8000/v1",
                 temperature=0,
                 top_p=1,
                 max_tokens=1024,

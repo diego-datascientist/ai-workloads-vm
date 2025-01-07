@@ -21,3 +21,5 @@ PyMuPDF
 
 # nims 
 langchain-nvidia-ai-endpoints==0.1.6
+boto3
+google-cloud-storage
