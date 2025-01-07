@@ -5,4 +5,5 @@ app/.env
 google-cloud-sdk
 checkpoints
 sample
-app
+app/src/dump
+*__pycache__
