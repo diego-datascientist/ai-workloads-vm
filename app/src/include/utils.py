@@ -8,7 +8,7 @@ from langchain_core.vectorstores import VectorStore
 
 from langchain.text_splitter import SentenceTransformersTokenTextSplitter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings, NVIDIARerank
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 
 NLIST = 128
@@ -21,16 +21,16 @@ INDEX_TYPE = "IVF_FLAT"
 TEXT_SPLITER_MODEL_HUGGINGFACE = "snowflake/arctic-embed-l"
 
 DEFAULT_MILVUS_PORT = 19530
-DEFAULT_MILVUS_HOST = "milvus-standalone"
-# DEFAULT_MILVUS_HOST = "localhost"
+# DEFAULT_MILVUS_HOST = "milvus-standalone"
+DEFAULT_MILVUS_HOST = "localhost"
 
 
 
 def get_embedder(model_name:str):
     document_embedder = NVIDIAEmbeddings(
             model=model_name,
-            # base_url="http://localhost:9080/v1"  
-            base_url="http://nemollm-embedding:8000/v1"  
+            base_url="http://localhost:9080/v1"  
+            # base_url="http://nemollm-embedding:8000/v1"  
         )
     print("document_embedder initialized successfully.")
     return document_embedder
@@ -48,8 +48,8 @@ def get_embedder_openai():
 
 def get_chat_model():
     return ChatNVIDIA(
-        # base_url="http://localhost:8000/v1", 
-        base_url="http://nemollm-inference:8000/v1", 
+        base_url="http://localhost:8000/v1", 
+        # base_url="http://nemollm-inference:8000/v1", 
         temperature=0,
         top_p=1,
         max_tokens=1024,
@@ -67,7 +67,10 @@ def get_openai_chat_model():
     return client
 
 def get_ranking_model():
-    return NVIDIARerank( base_url=f"http://ranking-ms:8000/v1", top_n=10, truncate="END")
+    return NVIDIARerank( #base_url=f"http://ranking-ms:8000/v1",
+                        base_url=f"http://localhost:1976/v1",
+                        top_n=10,
+                        truncate="END")
 
 
 def create_vectorstore_langchain(document_embedder: "Embeddings", collection_name: str = "") -> VectorStore:

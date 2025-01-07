@@ -1,7 +1,7 @@
 include:
   - path:
     - ./docker-compose-nims.yml
-    - ./docker-compose-ranker.yml
+    # - ./docker-compose-ranker.yml
 
 services:
   etcd:
@@ -59,26 +59,26 @@ services:
       - "minio"
 
 
-# # application  container
-  app-container:
-    build: 
-      context: .
-      dockerfile: app/Dockerfile
-    container_name: streamlit-nims
-    ports:
-      - "8501:8501"
-    depends_on:
-      - "standalone"
-    environment:
-      - STREAMLIT_SERVER_HEADLESS=true
-      - STREAMLIT_SERVER_PORT=8501
-      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
-      - STREAMLIT_SERVER_ENABLECORS=false
-      - MILVUS_HOST=milvus-standalone 
-      - MILVUS_PORT=19530
-    # volumes:
-    #   - ${DOCKER_VOLUME_DIRECTORY:-.}/app/Data:/application/app/Data
-    restart: unless-stopped
+# # # application  container
+#   app-container:
+#     build: 
+#       context: .
+#       dockerfile: app/Dockerfile
+#     container_name: streamlit-nims
+#     ports:
+#       - "8501:8501"
+#     depends_on:
+#       - "standalone"
+#     environment:
+#       - STREAMLIT_SERVER_HEADLESS=true
+#       - STREAMLIT_SERVER_PORT=8501
+#       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+#       - STREAMLIT_SERVER_ENABLECORS=false
+#       - MILVUS_HOST=milvus-standalone 
+#       - MILVUS_PORT=19530
+#     # volumes:
+#     #   - ${DOCKER_VOLUME_DIRECTORY:-.}/app/Data:/application/app/Data
+#     restart: unless-stopped
 
 
 networks:

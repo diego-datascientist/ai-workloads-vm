@@ -2,6 +2,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from operator import itemgetter
+from transformers import GPT2Tokenizer
 
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings, NVIDIARerank
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -16,6 +17,8 @@ from .include.utils import (
     get_ranking_model,
     get_chat_model
 )
+import warnings
+warnings.simplefilter("ignore", category=UserWarning)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -103,7 +106,7 @@ def re_rank(q):
 
     # Handling Retrieval failure
     docs = retrieval_chain.invoke({"input": q})
-    print("DOCS", docs)
+    # print("DOCS", docs)
     if not docs:
         logger.warning("Retrieval failed to get any relevant context")
         return iter(
@@ -116,39 +119,118 @@ def re_rank(q):
 
 
 
+# def answer_query(query: str):
+#     global vs
+#     if vs is None:
+#         vs = create_vectorstore_langchain(document_embedder=document_embedder)
+#         logger.info("Vector store recreated as it was None.")
+
+
+
+
+#     # Initial similarity search
+#     initial_docs = vs.similarity_search(query, SEARCH_LIMIT)
+#     logger.info(f"Initial retrieved {len(initial_docs)} documents for query: '{query}'")
+
+#     # if ranker:
+#     re_rank(query)
+
+#     # Rerank the initial documents using the correct method
+#     try:
+#         reranked_docs = ranker.compress_documents(query=query, documents=initial_docs)
+#         logger.info(f"Reranked {len(reranked_docs)} documents.")
+#     except AttributeError as ae:
+#         logger.error(f"Reranking failed: {ae}")
+#         # reranked_docs = initial_docs  # Fallback to initial docs if reranking fails
+#     except Exception as e:
+#         logger.error(f"Reranking failed: {e}")
+#         # reranked_docs = initial_docs  # Fallback to initial docs if reranking fails
+
+#     # Select top-k documents after reranking
+#     print(f"there were {len(reranked_docs)} documents now selecting {TOP_K} from it")
+#     top_k_docs = reranked_docs[:TOP_K]
+#     context = "\n\n".join([doc.page_content for doc in top_k_docs])
+#     # print("CONEXT", context)
+#     logger.debug(f"Context for LLM: {context}")
+
+#     # Prepare the prompt
+#     system_message = (
+#         "You are an expert Conversational Chatbot. "
+#         "Use the context below to answer the user's question. If there's any confusion, ask clarifying questions.\n\n"
+#         "If you don't know something, just say 'I don't know'.\n\n"
+#         "Context:\n" + context
+#     )
+#     user_message = "User Question: " + query
+
+#     inference_client = get_chat_model()
+
+#     # Generate response using the local inference model
+#     try:
+#         response = inference_client.invoke(
+#             input=[
+#                 {"role": "system", "content": system_message},
+#                 {"role": "user", "content": user_message}
+#             ],
+#             temperature=0,
+#             top_p=1,
+#             frequency_penalty=0,
+#             presence_penalty=0
+#         )
+#         full_response = response.content
+#         logger.info("Response generated successfully.")
+#     except Exception as e:
+#         logger.error(f"LLM invocation failed: {e}")
+#         full_response = "I'm sorry, I couldn't process your request at the moment."
+
+#     return full_response.strip()
+
+# Initialize tokenizer (adjust to match your LLM)
+tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+MAX_TOKENS = 8192
+BUFFER_TOKENS = 1024  # Reserved for completion generation
+MAX_CONTEXT_TOKENS = MAX_TOKENS - BUFFER_TOKENS
+
+
+def truncate_context(context: str, max_tokens: int = MAX_CONTEXT_TOKENS):
+    """Truncate context to fit within the model's token limit."""
+    tokens = tokenizer.encode(context)
+    if len(tokens) > max_tokens:
+        logger.warning(f"Context too long ({len(tokens)} tokens). Truncating...")
+        truncated_tokens = tokens[:max_tokens]
+        return tokenizer.decode(truncated_tokens)
+    return context
+
+
 def answer_query(query: str):
     global vs
     if vs is None:
         vs = create_vectorstore_langchain(document_embedder=document_embedder)
         logger.info("Vector store recreated as it was None.")
 
-
-
-
     # Initial similarity search
     initial_docs = vs.similarity_search(query, SEARCH_LIMIT)
     logger.info(f"Initial retrieved {len(initial_docs)} documents for query: '{query}'")
 
-    # if ranker:
-    #     re_rank(query)
-
-    # Rerank the initial documents using the correct method
+    # Rerank the initial documents
     try:
         reranked_docs = ranker.compress_documents(query=query, documents=initial_docs)
         logger.info(f"Reranked {len(reranked_docs)} documents.")
     except AttributeError as ae:
         logger.error(f"Reranking failed: {ae}")
-        reranked_docs = initial_docs  # Fallback to initial docs if reranking fails
+        reranked_docs = initial_docs
     except Exception as e:
         logger.error(f"Reranking failed: {e}")
-        reranked_docs = initial_docs  # Fallback to initial docs if reranking fails
+        reranked_docs = initial_docs
 
     # Select top-k documents after reranking
-    print(f"there were {len(reranked_docs)} documents now selecting {TOP_K} from it")
     top_k_docs = reranked_docs[:TOP_K]
     context = "\n\n".join([doc.page_content for doc in top_k_docs])
-    print("CONEXT", context)
-    logger.debug(f"Context for LLM: {context}")
+    logger.debug(f"Full context length: {len(tokenizer.encode(context))} tokens")
+
+    # Truncate the context if necessary
+    context = truncate_context(context)
+    logger.info(f"Truncated context to {len(tokenizer.encode(context))} tokens")
 
     # Prepare the prompt
     system_message = (
@@ -180,6 +262,16 @@ def answer_query(query: str):
         full_response = "I'm sorry, I couldn't process your request at the moment."
 
     return full_response.strip()
+
+
+
+
+
+
+
+
+
+
 
 def rag_results_nims(query: str):
     logger.info("Received query for RAG processing.")

@@ -1,3 +1,8 @@
 volumes/
 app/.env
 .env
+
+google-cloud-sdk
+checkpoints
+sample
+app

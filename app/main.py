@@ -4,11 +4,13 @@ import logging
 from hashlib import md5
 from typing import Optional, Tuple
 import streamlit as st
+import boto3
 
 # from src.milvus_embed import get_rag_results, process_pdf_and_store_embeddings
 from src.nims_flow import ingestion, rag_results_nims
 from src.openai_flow import openai_ingestion, rag_results_openai
 from src.llm import chatbot
+
 
 # Configure logging
 logging.basicConfig(
@@ -116,6 +118,26 @@ def chatbot_response(query: str, history: list, flag:bool) -> Optional[str]:
         return None
 
 
+# def process_s3_file(cred:str, s3_path: str, flag: bool) -> Optional[str]:
+#     try:
+#         bucket, key = s3_path.replace("s3://", "").split('/', 1)
+#         local_path = f"Data/{uuid.uuid4().hex}.pdf"
+#         os.makedirs("Data", exist_ok=True)
+#         download_file(cred, bucket, key, local_path)
+#         logger.info(f"Downloaded file from S3 to {local_path}")
+
+#         if flag:
+#             ingestion(local_path)
+#         else:
+#             openai_ingestion(local_path)
+
+#         return local_path
+
+#     except Exception as e:
+#         st.error(f"Error downloading file from S3: {e}")
+#         return None
+
+
 def initialize_session_state():
     """
     Initializes the necessary session state variables for Streamlit.
@@ -161,26 +183,42 @@ def main():
         key="embedding_model"
     )
 
-    # File uploader allowing multiple files
-    uploaded_files = st.file_uploader("Choose PDF files", type=["pdf"], accept_multiple_files=True)
-    if uploaded_files:
-        with st.spinner("Processing the documents..."):
-            for uploaded_file in uploaded_files:
-                document_data_path = None
-                if embedding_model == "NVIDIA Embedding (nv-embedqa-e5-v5)":
-                    document_data_path = process_uploaded_file(uploaded_file, True)
-                else:
-                    document_data_path = process_uploaded_file(uploaded_file, False)
+    upload_type = st.selectbox(
+        "Select Upload Type:",
+        options=["Direct_Upload", "S3_Upload"]
+    )
+    if upload_type == "Direct_Upload":
+        # File uploader allowing multiple files
+        uploaded_files = st.file_uploader("Choose PDF files", type=["pdf"], accept_multiple_files=True)
+        if uploaded_files:
+            with st.spinner("Processing the documents..."):
+                for uploaded_file in uploaded_files:
+                    document_data_path = None
+                    if embedding_model == "NVIDIA Embedding (nv-embedqa-e5-v5)":
+                        document_data_path = process_uploaded_file(uploaded_file, True)
+                    else:
+                        document_data_path = process_uploaded_file(uploaded_file, False)
 
-                if document_data_path:
-                    st.session_state.uploaded_documents.append(document_data_path)
-                    st.success(f"Document '{uploaded_file.name}' uploaded and processed successfully!")
-                    try:
-                        os.remove(document_data_path)
-                        logger.info(f"Removed file {document_data_path} after processing.")
-                    except Exception as e:
-                        logger.warning(f"Could not remove file {document_data_path}: {e}")
-
+                    if document_data_path:
+                        st.session_state.uploaded_documents.append(document_data_path)
+                        st.success(f"Document '{uploaded_file.name}' uploaded and processed successfully!")
+                        try:
+                            os.remove(document_data_path)
+                            logger.info(f"Removed file {document_data_path} after processing.")
+                        except Exception as e:
+                            logger.warning(f"Could not remove file {document_data_path}: {e}")
+    # else:
+    #     accessKey = st.text_input("Please Enter AWS Access Key!)")
+    #     secretAccessKey = st.text_input("Please Enter AWS Secret Access Key!)")
+    #     s3_path = st.text_input("Enter S3 Path (e.g., s3://bucket-name/file.pdf)")
+    #     if st.button("Fetch from S3"):
+    #         with st.spinner("Fetching and processing..."):
+    #             if s3_path:
+    #                 if embedding_model == "NVIDIA Embedding":
+    #                     process_s3_file({accessKey, secretAccessKey}, s3_path, True)
+    #                 else:
+    #                     process_s3_file({accessKey, secretAccessKey}, s3_path, False)
+                    st.success("File fetched and processed!")
     # User query input
     query = st.text_input("Enter your question here:", placeholder="Type your question...")
 
