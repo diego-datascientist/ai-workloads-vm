@@ -1,0 +1,5 @@
+"Statistics of MinIO, GCP, and Milvus"
+Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s)
+Download,0.29,0.06,48.85,64.96,225.79
+Upload,3.77,0.25,2.96,64.96,17.23
+Ingestion,19.55,4.81,34.61,64.96,3.32

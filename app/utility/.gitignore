@@ -1,0 +1,15 @@
+.env
+volumes 
+
+sample 
+ngc
+input 
+huggingface 
+home
+tmp
+*.pth
+*.json
+vllm
+temp.py
+*__
+minio_main.py
