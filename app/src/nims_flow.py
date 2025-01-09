@@ -235,8 +235,8 @@ def answer_query(query: str):
     # Prepare the prompt
     system_message = (
         "You are an expert Conversational Chatbot. "
-        "Use the context below to answer the user's question. If there's any confusion, ask clarifying questions.\n\n"
-        "If you don't know something, just say 'I don't know'.\n\n"
+        "Use the context below to answer the user's question.\n\n"
+        "If the context does not contain information necessary to answer the user's question, respond with: 'I don't know based on the provided context.'"
         "Context:\n" + context
     )
     user_message = "User Question: " + query
@@ -262,15 +262,6 @@ def answer_query(query: str):
         full_response = "I'm sorry, I couldn't process your request at the moment."
 
     return full_response.strip()
-
-
-
-
-
-
-
-
-
 
 
 def rag_results_nims(query: str):

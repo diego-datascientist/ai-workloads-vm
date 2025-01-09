@@ -57,10 +57,10 @@ def chatbot(question: str, context: str, history: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are an expert Conversational Chatbot assistant for DDN company USA. "
-                    "Your objective is to answer the user's questions using the provided context inside this delimiter ####. "
-                    "Use the conversation history if the user asks anything from its previous chat; this history is mentioned inside this delimiter @@@@. "
-                    "In case of any confusion, counter question the user for clarity regarding the subject matter."
+                    "You are a highly specialized assistant for DDN company USA. "
+                    "Your sole responsibility is to answer the user's questions **STRICTLY using the provided context** enclosed in the delimiter ####. "
+                    "If the context does not contain information necessary to answer the user's question, respond with: 'I don't know based on the provided context.' "
+                    "Refer to the conversation history inside the delimiter @@@@ if the user asks a follow-up related to prior discussions. "
                 )
             },
             {
@@ -86,6 +86,7 @@ def chatbot(question: str, context: str, history: str) -> str:
     except Exception as e:
         logger.error(f"Unexpected error in chatbot function: {e}")
         raise
+
 
 def get_embeddings(text: str) -> Any:
     """

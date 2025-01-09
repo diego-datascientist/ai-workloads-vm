@@ -5,6 +5,8 @@ import logging
 from hashlib import md5
 from typing import Optional, Tuple
 import boto3
+import time
+import tracemalloc  # Added to track memory usage
 
 # Get the absolute path to the 'src' directory
 src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -120,14 +122,25 @@ def chatbot_response(query: str, history: list, flag:bool) -> Optional[str]:
 def main():
     # Example user query
     user_query = input("Enter your question: ")
+    
+    # Benchmarking start
+    start_time = time.time()
+    tracemalloc.start()  # Start memory tracking
 
     # Example chatbot response
     chat_history = []
     response = chatbot_response(user_query, chat_history, True)  # Example: Assuming not NVIDIA model
 
     # Example output
-    print("Here's my answer:")
+    print("\nHere's my answer:")
     print(response)
+    # Benchmarking end
+    memory_used, _ = tracemalloc.get_traced_memory()
+    elapsed_time = time.time() - start_time
+    tracemalloc.stop()
+
+    logger.info(f"Chatbot response generated in {elapsed_time:.2f} seconds.")
+    logger.info(f"Memory used: {memory_used / (1024 * 1024):.2f} MB")
 
     # Example chat history display
     if chat_history:

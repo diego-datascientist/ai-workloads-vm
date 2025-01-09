@@ -11,4 +11,5 @@ tmp
 *.json
 vllm
 temp.py
-*__pycache__
+*__
+minio_main.py
