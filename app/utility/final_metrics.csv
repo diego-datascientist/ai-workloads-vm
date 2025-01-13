@@ -1,5 +1,25 @@
 "Statistics of MinIO, GCP, and Milvus"
 Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s)
-Download,0.29,0.06,48.85,64.96,225.79
-Upload,3.77,0.25,2.96,64.96,17.23
-Ingestion,19.55,4.81,34.61,64.96,3.32
+Download,0.17,0.07,36.44,22.09,126.59
+Upload,0.30,0.11,31.34,22.09,72.75
+Ingestion,61.01,5.01,8.79,22.09,0.36
+"Statistics of MinIO, GCP, and Milvus"
+Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s)
+Download,2.85,0.14,15.13,22.09,7.77
+Upload,4.27,0.08,2.01,22.09,5.17
+Ingestion,74.57,5.02,5.65,22.09,0.30
+"Statistics of MinIO, GCP, and Milvus"
+Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s),ModelName,EmbeddingModelName,Re-rankingModelName
+Download,2.71,0.14,17.45,22.09,8.15
+Upload,3.70,0.08,2.67,22.09,5.97
+Ingestion,94.16,5.03,4.39,22.09,0.23
+"Statistics of AWS, GCP, and Milvus"
+Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s)
+Download,2.48,0.47,9.60,20.89,8.42
+Upload,3.10,0.39,6.33,0.00,0.00
+Ingestion,44.12,4.88,11.96,20.89,0.47
+"Statistics of AWS, GCP, and Milvus"
+Stage,ExecutionTime(sec),MemoryUsage(MB),CPU-Usage(%),DataTransferred(MB),Throughput(MB/s)
+Download,2.41,0.46,11.19,20.89,8.67
+Upload,2.62,0.39,8.71,0.00,0.00
+Ingestion,84.23,4.87,4.70,20.89,0.25

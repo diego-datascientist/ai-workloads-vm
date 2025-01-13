@@ -1,21 +1,26 @@
 import time
-import tracemalloc   # For memory tracking
-import psutil        # For CPU time & process stats
+import tracemalloc
+import psutil
 import boto3
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from google.cloud import storage
 import os
 from dotenv import load_dotenv
 import logging
 from functools import wraps
-import csv  # <-- For writing the final metrics to CSV
+import csv
+import warnings
+from urllib3.exceptions import InsecureRequestWarning
 
 from helper_functions.embedding import ingestion
 from minio import Minio
 
+# Suppress only InsecureRequestWarning
+warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -44,7 +49,6 @@ metrics = {
     "Ingestion":  {"time": 0.0, "memory": 0.0, "cpu": 0.0, "bytes": 0.0, "calls": 0},
 }
 
-# Maps local_path → S3 file size (bytes), set during list_files_in_s3 / transfer
 local_path_sizes = {}
 
 ############################################################################
@@ -61,32 +65,26 @@ def benchmark(stage):
             start_cpu = process.cpu_times()
             start_time = time.time()
 
-            # Execute the target function
             result = func(*args, **kwargs)
 
-            # Calculate elapsed time & CPU usage
             elapsed_time = time.time() - start_time
             end_cpu = process.cpu_times()
 
             current_mem, _ = tracemalloc.get_traced_memory()
             tracemalloc.stop()
 
-            # CPU time (user + system)
             cpu_time_spent = (end_cpu.user - start_cpu.user) + (end_cpu.system - start_cpu.system)
             cpu_usage_call = 0.0
             if elapsed_time > 0:
                 cpu_usage_call = (cpu_time_spent / elapsed_time) * 100.0
 
-            # Update aggregate metrics
             metrics[stage]["time"]   += elapsed_time
             metrics[stage]["memory"] += (current_mem / (1024 * 1024))
             metrics[stage]["cpu"]    += cpu_usage_call
             metrics[stage]["calls"]  += 1
 
-            # Identify local_path from kwargs
             local_path = kwargs.get("local_path", None)
 
-            # Compute file size: from local disk or fallback
             file_size = 0
             if local_path and os.path.isfile(local_path):
                 file_size = os.path.getsize(local_path)
@@ -95,7 +93,6 @@ def benchmark(stage):
 
             metrics[stage]["bytes"] += file_size
 
-            # Log each call
             logger.info(f"{func.__name__} completed in {elapsed_time:.2f} sec.")
             logger.info(f"Memory Usage: {current_mem / (1024 * 1024):.2f} MB")
             logger.info(f"CPU Usage: {cpu_usage_call:.2f}%")
@@ -109,9 +106,6 @@ def benchmark(stage):
 # List files in S3
 ############################################################################
 def list_files_in_s3(s3_client, bucket, prefix):
-    """
-    Return list of (key, size_in_bytes).
-    """
     objects = []
     continuation_token = None
 
@@ -141,9 +135,6 @@ def list_files_in_s3(s3_client, bucket, prefix):
 ############################################################################
 @benchmark(stage="Download")
 def download_from_s3(s3_client, bucket, key, local_path=None):
-    """
-    Download a file from S3 to local storage.
-    """
     try:
         if not local_path:
             logger.error("download_from_s3 called without local_path!")
@@ -153,7 +144,6 @@ def download_from_s3(s3_client, bucket, key, local_path=None):
         s3_client.download_file(bucket, key, local_path)
         logger.info(f"Downloaded {key} to {local_path}")
 
-        # Record actual local size as fallback
         if os.path.isfile(local_path):
             local_path_sizes[local_path] = os.path.getsize(local_path)
 
@@ -171,12 +161,31 @@ def download_from_MinIO(minio_client, bucket, key, local_path=None):
         minio_client.fget_object(bucket, key, local_path)
         logger.info(f"Downloaded '{key}' to '{local_path}'")
 
-        # Record actual local size as fallback
         if os.path.isfile(local_path):
             local_path_sizes[local_path] = os.path.getsize(local_path)
 
     except Exception as e:
         logger.error(f"Error downloading {key} from MinIO: {e}")
+
+@benchmark(stage="Download")
+def download_from_gcp(gcp_bucket_name=None, gcp_blob_name=None, local_path=None):
+    try:
+        if not local_path:
+            logger.error("download_from_gcp called without local_path!")
+            return
+
+        bucket = gcp_client.bucket(gcp_bucket_name)
+        blob = bucket.blob(gcp_blob_name)
+
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        blob.download_to_filename(local_path)
+        logger.info(f"Downloaded {gcp_blob_name} to {local_path}")
+
+        if os.path.isfile(local_path):
+            local_path_sizes[local_path] = os.path.getsize(local_path)
+
+    except Exception as e:
+        logger.error(f"Error downloading {gcp_blob_name} from GCP: {e}")
 
 
 
@@ -185,9 +194,6 @@ def download_from_MinIO(minio_client, bucket, key, local_path=None):
 ############################################################################
 @benchmark(stage="Upload")
 def upload_to_gcp(local_path=None, gcp_bucket_name=None, gcp_blob_name=None):
-    """
-    Upload the local_path file to GCP.
-    """
     try:
         if not local_path:
             logger.error("upload_to_gcp called without local_path!")
@@ -203,15 +209,55 @@ def upload_to_gcp(local_path=None, gcp_bucket_name=None, gcp_blob_name=None):
     except Exception as e:
         logger.error(f"Error uploading {local_path} to GCP: {e}")
 
+@benchmark(stage="Upload")
+def upload_to_MinIO(minio_client, bucket, key, local_path=None):
+    try:
+        if not local_path:
+            logger.error("upload_to_MinIO called without local_path!")
+            return
+
+        if not os.path.isfile(local_path):
+            logger.warning(f"Cannot upload. Not a file: {local_path}")
+            return
+
+        with open(local_path, 'rb') as file_data:
+            file_stat = os.stat(local_path)
+            minio_client.put_object(
+                bucket_name=bucket,
+                object_name=key,
+                data=file_data,
+                length=file_stat.st_size
+            )
+        logger.info(f"Uploaded '{local_path}' to MinIO bucket '{bucket}' as '{key}'")
+    except Exception as e:
+        logger.error(f"Error uploading {local_path} to MinIO: {e}")
+
+@benchmark(stage="Upload")
+def upload_to_infinia(s3_client, bucket_name, infinia_folder_name, file_path):
+    try:
+        if not os.path.isfile(file_path):
+            return f"Error: File '{file_path}' not found."
+
+        file_name = os.path.basename(file_path)
+        s3_key = os.path.join(infinia_folder_name, file_name)
+
+        s3_client.upload_file(file_path, bucket_name, s3_key)
+        return f"File '{file_name}' successfully uploaded to bucket '{bucket_name}' in folder '{infinia_folder_name}'."
+    except FileNotFoundError:
+        return f"Error: File '{file_path}' not found."
+    except NoCredentialsError:
+        return "Error: No credentials provided."
+    except PartialCredentialsError:
+        return "Error: Incomplete credentials provided."
+    except Exception as e:
+        return f"An error occurred: {e}"
+
 
 ############################################################################
 # Ingest
 ############################################################################
 @benchmark(stage="Ingestion")
 def ingest_data(file_name=None, local_path=None):
-    """
-    Ingest data into Milvus (or vector DB).
-    """
     try:
         ingestion(file_name, local_path)
     except Exception as e:
@@ -222,16 +268,12 @@ def ingest_data(file_name=None, local_path=None):
 # Remove
 ############################################################################
 def remove_file(local_path):
-    """
-    Removes the local file.
-    """
     try:
         if os.path.isfile(local_path):
             os.remove(local_path)
             logger.info(f"Deleted {local_path}")
     except Exception as e:
         logger.error(f"Failed to delete {local_path}: {e}")
-
 
 
 def ingestion_from_AWS(local_download_path):
@@ -256,8 +298,6 @@ def ingestion_from_AWS(local_download_path):
     for key, size in s3_files:
         file_name = key.split('/')[-1]
         local_path = os.path.join(local_download_path, file_name)
-
-        # Pre-store fallback from S3
         local_path_sizes[local_path] = size
 
         download_from_s3(s3_client, bucket=aws_bucket, key=key, local_path=local_path)
@@ -265,11 +305,46 @@ def ingestion_from_AWS(local_download_path):
         ingest_data(file_name=file_name, local_path=local_path)
         remove_file(local_path)
 
+def ingestion_from_infinia(local_download_path):
+    infinia_bucket = input("Enter the Infinia Bucket Name:")
+    infinia_folder = input("Enter the Infinia Folder Name: ")
+    infinia_destination_bucket = "rag-lake"
+    infinia_destination_folder = infinia_folder
+
+    source_cred = {
+        "accessKey": os.environ.get("INFINIA_ACCESS_KEY_ID", ""),
+        "secretAccessKey": os.environ.get("INFINIA_SECRET_ACCESS_KEY", ""),
+        "infinia_endpoint": os.environ.get("INFINIA_ENDPOINT_URL", "")
+    }
+    infinia_client = boto3.client(
+        's3',
+        aws_access_key_id=source_cred['accessKey'],
+        aws_secret_access_key=source_cred['secretAccessKey'],
+        endpoint_url=source_cred['infinia_endpoint'],
+        verify=False
+    )
+
+    infinia_files = list_files_in_s3(infinia_client, infinia_bucket, infinia_folder)
+    if not infinia_files:
+        logger.info(f"No files found in {infinia_bucket}/{infinia_folder}")
+        return
+    for key, size in infinia_files:
+        file_name = key.split('/')[-1]
+        local_path = os.path.join(local_download_path, file_name)
+        local_path_sizes[local_path] = size
+
+        download_from_s3(infinia_client, bucket=infinia_bucket, key=key, local_path=local_path)
+        upload_to_infinia(infinia_client, infinia_destination_bucket, infinia_destination_folder, local_path)
+        ingest_data(file_name=file_name, local_path=local_path)
+        remove_file(local_path)
 
 def ingestion_from_MinIO(local_download_path):
-    minio_bucket = input("Enter the MinIO Bucket Name: ")
-    minio_folder = input("Enter the MinIO Folder Name (prefix): ")
-    # MinIO server config from .env
+    minio_source_bucket = input("Enter the MinIO Bucket Name: ")
+    minio_source_folder = input("Enter the MinIO Folder Name (prefix): ")
+
+    destination_minio_bucket = "gke-rag-destination-bucket"
+    destination_prefix = minio_source_folder
+
     MINIO_SERVER = os.environ.get("MINIO_SERVER", "127.0.0.1:9000")
     MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
     MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
@@ -278,24 +353,51 @@ def ingestion_from_MinIO(local_download_path):
         MINIO_SERVER,
         access_key=MINIO_ACCESS_KEY,
         secret_key=MINIO_SECRET_KEY,
-        secure=False  # or True if using HTTPS
+        secure=False
     )
+
     minio_files = minio_client.list_objects(
-        bucket_name=minio_bucket,
-        prefix=minio_folder,
+        bucket_name=minio_source_bucket,
+        prefix=minio_source_folder,
         recursive=True
     )
+
     if not minio_files:
-        logger.info(f"No files found in {minio_bucket}/{minio_folder}")
+        logger.info(f"No files found in {minio_source_bucket}/{minio_source_folder}")
         return
+
     for file in minio_files:
-        object_name = file.object_name  # e.g. "folder/subdir/file.txt"
+        object_name = file.object_name
         file_basename = os.path.basename(object_name)
         local_path = os.path.join(local_download_path, file_basename)
 
-        download_from_MinIO(minio_client, bucket=minio_bucket, key=object_name, local_path=local_path)
-        upload_to_gcp(local_path=local_path, gcp_bucket_name=gcp_bucket_name, gcp_blob_name=(gcp_folder + file_basename))
+        download_from_MinIO(minio_client, bucket=minio_source_bucket, key=object_name, local_path=local_path)
+        destination_key = os.path.join(destination_prefix, file_basename)
+        upload_to_MinIO(minio_client, bucket=destination_minio_bucket, key=destination_key, local_path=local_path)
         ingest_data(file_name=file_basename, local_path=local_path)
+        remove_file(local_path)
+
+def ingestion_from_GCP(local_download_path):
+    destination_bucket_name = "gke-rag-destination-bucket"
+    source_bucket_name = input("Enter the GCP Bucket Name: ")
+    source_prefix = input("Enter the GCP Folder Name (prefix): ")
+
+    source_bucket = gcp_client.bucket(source_bucket_name)
+    blobs = list(source_bucket.list_blobs(prefix=source_prefix))
+
+    if not blobs:
+        logger.info(f"No files found in gs://{source_bucket_name}/{source_prefix}")
+        return
+
+    for blob in blobs:
+        if os.path.isdir(blob.name):
+            continue
+        file_name = blob.name.split('/')[-1]
+        local_path = os.path.join(local_download_path, file_name)
+
+        download_from_gcp(gcp_bucket_name=source_bucket_name, gcp_blob_name=blob.name, local_path=local_path)
+        upload_to_gcp(local_path=local_path, gcp_bucket_name=destination_bucket_name, gcp_blob_name=file_name)
+        ingest_data(file_name=file_name, local_path=local_path)
         remove_file(local_path)
 
 
@@ -303,10 +405,6 @@ def ingestion_from_MinIO(local_download_path):
 # Print & Save Metrics
 ############################################################################
 def print_aggregate_metrics(aws):
-    """
-    Prints final aggregated metrics to console 
-    and appends them into a CSV file (final_metrics.csv).
-    """
     logger.info("\n======= Aggregate Metrics =======")
     csv_file = "final_metrics.csv"
     file_exists = os.path.exists(csv_file)
@@ -332,12 +430,10 @@ def print_aggregate_metrics(aws):
 
                 avg_cpu = (total_cpu / calls) if calls else 0.0
 
-                # Throughput in MB/s
                 throughput = 0.0
                 if total_time > 0 and total_bytes > 0:
                     throughput = (total_bytes / (1024 * 1024)) / total_time
 
-                # Print log
                 logger.info(
                     f"{stage} - "
                     f"ExecutionTime: {total_time:.2f} sec, "
@@ -347,7 +443,6 @@ def print_aggregate_metrics(aws):
                     f"TotalThroughput: {throughput:.2f} MB/s"
                 )
 
-                # Append row to CSV
                 writer.writerow([
                     stage,
                     f"{total_time:.2f}",
@@ -364,41 +459,74 @@ def print_aggregate_metrics(aws):
                 "MemoryUsage(MB)",
                 "CPU-Usage(%)",
                 "DataTransferred(MB)",
-                "Throughput(MB/s)"
+                "Throughput(MB/s)",
+                "ModelName",
+                "EmbeddingModelName",
+                "Re-rankingModelName"
             ])
             for stage, data in metrics.items():
-                total_time  = data["time"]
-                total_mem   = data["memory"]
-                total_cpu   = data["cpu"]
-                calls       = data["calls"]
-                total_bytes = data["bytes"]
+                print("Stage: ", stage)
+                if stage == "Ingestion":
+                    total_time  = data["time"]
+                    total_mem   = data["memory"]
+                    total_cpu   = data["cpu"]
+                    calls       = data["calls"]
+                    total_bytes = data["bytes"]
 
-                avg_cpu = (total_cpu / calls) if calls else 0.0
+                    avg_cpu = (total_cpu / calls) if calls else 0.0
 
-                # Throughput in MB/s
-                throughput = 0.0
-                if total_time > 0 and total_bytes > 0:
-                    throughput = (total_bytes / (1024 * 1024)) / total_time
+                    throughput = 0.0
+                    if total_time > 0 and total_bytes > 0:
+                        throughput = (total_bytes / (1024 * 1024)) / total_time
 
-                # Print log
-                logger.info(
-                    f"{stage} - "
-                    f"ExecutionTime: {total_time:.2f} sec, "
-                    f"MemoryUsage: {total_mem:.2f} MB, "
-                    f"CPU-Usage: {avg_cpu:.2f}%, "
-                    f"DataTransferred: {total_bytes / (1024 * 1024):.2f} MB, "
-                    f"TotalThroughput: {throughput:.2f} MB/s"
-                )
+                    logger.info(
+                        f"{stage} - "
+                        f"ExecutionTime: {total_time:.2f} sec, "
+                        f"MemoryUsage: {total_mem:.2f} MB, "
+                        f"CPU-Usage: {avg_cpu:.2f}%, "
+                        f"DataTransferred: {total_bytes / (1024 * 1024):.2f} MB, "
+                        f"TotalThroughput: {throughput:.2f} MB/s",
+                        "ModelName: "
+                    )
 
-                # Append row to CSV
-                writer.writerow([
-                    stage,
-                    f"{total_time:.2f}",
-                    f"{total_mem:.2f}",
-                    f"{avg_cpu:.2f}",
-                    f"{(total_bytes / (1024 * 1024)):.2f}",
-                    f"{throughput:.2f}"
-                ])
+                    writer.writerow([
+                        stage,
+                        f"{total_time:.2f}",
+                        f"{total_mem:.2f}",
+                        f"{avg_cpu:.2f}",
+                        f"{(total_bytes / (1024 * 1024)):.2f}",
+                        f"{throughput:.2f}"
+                    ])
+                else:
+                    total_time  = data["time"]
+                    total_mem   = data["memory"]
+                    total_cpu   = data["cpu"]
+                    calls       = data["calls"]
+                    total_bytes = data["bytes"]
+
+                    avg_cpu = (total_cpu / calls) if calls else 0.0
+
+                    throughput = 0.0
+                    if total_time > 0 and total_bytes > 0:
+                        throughput = (total_bytes / (1024 * 1024)) / total_time
+
+                    logger.info(
+                        f"{stage} - "
+                        f"ExecutionTime: {total_time:.2f} sec, "
+                        f"MemoryUsage: {total_mem:.2f} MB, "
+                        f"CPU-Usage: {avg_cpu:.2f}%, "
+                        f"DataTransferred: {total_bytes / (1024 * 1024):.2f} MB, "
+                        f"TotalThroughput: {throughput:.2f} MB/s"
+                    )
+
+                    writer.writerow([
+                        stage,
+                        f"{total_time:.2f}",
+                        f"{total_mem:.2f}",
+                        f"{avg_cpu:.2f}",
+                        f"{(total_bytes / (1024 * 1024)):.2f}",
+                        f"{throughput:.2f}"
+                    ])
             
 
 ############################################################################
@@ -408,7 +536,13 @@ def print_aggregate_metrics(aws):
 def transfer(local_download_path):
     os.makedirs(local_download_path, exist_ok=True)
 
-    print("Select one from the following:\n1. Press 1 for AWS S3\n2. Press 2 for MinIO Bucket")
+    print(
+        "Select one from the following:\n"
+        "1. Press 1 for AWS S3\n"
+        "2. Press 2 for MinIO Bucket\n"
+        "3. Press 3 for GCP Bucket\n"
+        "4. Press 4 for Infinia Bucket"
+    )
     option = int(input("Enter your option: "))
     if option == 1:
         ingestion_from_AWS(local_download_path)
@@ -416,9 +550,12 @@ def transfer(local_download_path):
     elif option == 2:
         ingestion_from_MinIO(local_download_path)
         print_aggregate_metrics(False)
-
-
-
+    elif option == 3:
+        ingestion_from_GCP(local_download_path)
+        print_aggregate_metrics(False)
+    elif option == 4:
+        ingestion_from_infinia(local_download_path)
+        print_aggregate_metrics(True)
 ############################################################################
 # Main
 ############################################################################

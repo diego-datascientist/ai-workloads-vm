@@ -64,16 +64,11 @@ def download_images(client, bucket_name, folder_path, local_dir):
     bucket = client.get_bucket(bucket_name)
     blobs = bucket.list_blobs(prefix=folder_path)
 
-    # Loop through all files in the folder
     for blob in blobs:
-        # Skip folders (blobs with trailing '/')
         if blob.name.endswith('/'):
             continue
         
-        # Local path for saving
         local_file_path = os.path.join(local_dir, os.path.basename(blob.name))
-        
-        # Download file
         blob.download_to_filename(local_file_path)
         print(f"Downloaded: {blob.name} to {local_file_path}")
 
@@ -95,7 +90,7 @@ def load_images(spark, img_dir):
 # ----------------------------------
 class ImageNetDataset(Dataset):
     def __init__(self, img_df, transform=None, base_dir='./'):
-        self.img_df = img_df.collect()  # Collect Spark DataFrame to list
+        self.img_df = img_df.collect()
         self.transform = transform
         self.base_dir = base_dir
 
@@ -107,14 +102,12 @@ class ImageNetDataset(Dataset):
         parsed_path = urlparse(img_path).path  
         relative_path = os.path.relpath(parsed_path, self.base_dir)
 
-        # Attempt to open the image
         try:
             img = Image.open(relative_path).convert("RGB")
 
             filename = os.path.basename(relative_path)
             parts = filename.split('.')
             
-            # Parse the integer label from the middle part
             label_str = parts[1]
             label = int(label_str)
 
@@ -125,6 +118,7 @@ class ImageNetDataset(Dataset):
         except Exception as e:
             logger.warning(f"Failed to process image: {relative_path}. Error: {e}")
             return None
+
 # -----------------------------------------
 # 9. Image Transformations and Dataloaders
 # -----------------------------------------
@@ -168,7 +162,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         running_loss = 0.0
 
         for images, labels in train_loader:
-            if images is None:  # Skip failed images
+            if images is None:
                 continue
 
             images, labels = images.to(device), labels.to(device)
@@ -184,7 +178,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device, n
         avg_loss = running_loss / len(train_loader)
         logger.info(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
 
-        # Save checkpoint every 2 epochs
         if (epoch + 1) % 2 == 0:
             checkpoint_file = f"{checkpoint_path}/resnet50_epoch_{epoch+1}.pth"
             torch.save(model.state_dict(), checkpoint_file)
@@ -219,19 +212,14 @@ def evaluate_model(model, val_loader, device):
 def upload_checkpoints(client, bucket_name, local_checkpoints_dir, gcs_folder="checkpoints"):
     bucket = client.bucket(bucket_name)
 
-    # Walk through local checkpoints directory
     try:
         for root, dirs, files in os.walk(local_checkpoints_dir):
             for filename in files:
                 local_path = os.path.join(root, filename)
 
-                # Construct the relative path to preserve folder structure
                 relative_path = os.path.relpath(local_path, local_checkpoints_dir)
-
-                # Define the blob path in GCS
                 gcs_blob_path = os.path.join(gcs_folder, relative_path)
 
-                # Create a blob object and upload the file
                 blob = bucket.blob(gcs_blob_path)
                 blob.upload_from_filename(local_path)
 
@@ -258,7 +246,6 @@ if __name__ == "__main__":
     LOCAL_VAL_DIR = './app/utility/sample/val/'
     # CONSTANTS ENDS
 
-    # Create local save directory if not exists
     os.makedirs(LOCAL_TRAIN_DIR, exist_ok=True)
     os.makedirs(LOCAL_VAL_DIR, exist_ok=True)
 
@@ -269,20 +256,16 @@ if __name__ == "__main__":
     train_df = load_images(spark, LOCAL_TRAIN_DIR)
     val_df = load_images(spark, LOCAL_VAL_DIR)
 
-    # Transformations
     transform = get_transforms()
 
-    # Dataset and DataLoader
     train_dataset = ImageNetDataset(train_df, transform)
     val_dataset = ImageNetDataset(val_df, transform)
     train_loader = create_dataloader(train_dataset)
     val_loader = create_dataloader(val_dataset, shuffle=False)
 
-    # Model and Training Config
     model = get_model(device)
     criterion, optimizer = configure_training(model)
 
-    # Train and Evaluate
     train_model(model, train_loader, val_loader, criterion, optimizer, device)
     evaluate_model(model, val_loader, device)
     client = gcs_client()

@@ -1,9 +1,9 @@
 volumes/
 app/.env
 .env
-
 google-cloud-sdk
 checkpoints
 sample
 app/src/dump
 *__pycache__
+ddn info
