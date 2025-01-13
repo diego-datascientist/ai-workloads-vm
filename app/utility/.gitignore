@@ -1,6 +1,5 @@
 .env
-volumes 
-
+volumes
 sample 
 ngc
 input 
@@ -13,3 +12,7 @@ vllm
 temp.py
 *__
 minio_main.py
+helper_functions/certificates
+helper_functions/__*
+checkpoints/*
+infinia_bucket_access.py

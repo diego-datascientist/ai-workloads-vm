@@ -17,48 +17,33 @@ services:
       timeout: 20s
       retries: 3
 
-  minio:
-    container_name: milvus-minio
-    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
-    environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
-    command: minio server /minio_data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
   standalone:
-    container_name: milvus-standalone-01
-    image: milvusdb/milvus:v2.2.16
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.5.0
     command: ["milvus", "run", "standalone"]
+    env_file:
+      - /home/daguero/idp-vm/app/utility/.env
     environment:
       ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
     volumes:
+      - /home/daguero/idp-vm/app/utility/helper_functions/certificates/red_ca_407BD48D-56C8-5429-E46E-58236CD413C0.crt:/etc/ssl/certs/red_ca_407BD48D-56C8-5429-E46E-58236CD413C0.crt
+      - /home/daguero/idp-vm/app/utility/milvus.yaml:/milvus/configs/milvus.yaml
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
       start_period: 90s
       timeout: 20s
       retries: 3
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-    depends_on:
-      - "etcd"
-      - "minio"
 
   nemollm-embedding:
     container_name: nemo-retriever-embedding-microservice
     image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:1.0.1
-    # volumes:
-    # - ${MODEL_DIRECTORY}:/opt/nim/.cache
     ports:
     - "9080:8000"
     expose:
@@ -73,8 +58,6 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              # device_ids: ['${EMBEDDING_MS_GPU_ID:-2}']
-              # count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health/ready"]
@@ -110,12 +93,6 @@ services:
             - driver: nvidia
               count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
-        # limits:
-        #   devices:
-        #     - driver: nvidia
-        #       count: 1
-        #       capabilities: [gpu]
-        #   memory: 12g  # Adjust based on available GPU memory
     healthcheck:
       test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/v1/health/ready')"]
       interval: 10s
@@ -125,7 +102,6 @@ services:
   ranking-ms:
     container_name: nemo-retriever-ranking-microservice
     image: nvcr.io/nim/nvidia/nv-rerankqa-mistral-4b-v3:1.0.1
-    # image: nvcr.io/nim/nvidia/llama-3.2-nv-rerankqa-1b-v2:latest
     volumes:
     - ${MODEL_DIRECTORY}:/opt/nim/.cache
     ports:

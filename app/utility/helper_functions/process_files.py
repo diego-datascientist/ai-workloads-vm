@@ -1,17 +1,14 @@
 import os
 import logging
-from typing import Optional
 
 import openpyxl
-from langchain_community.document_loaders import UnstructuredWordDocumentLoader, UnstructuredPDFLoader
+from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 
 try:
     import fitz  # PyMuPDF
 except ImportError as e:
     raise ImportError("fitz module is required for reading PDF files. Install it using 'pip install PyMuPDF'") from e
 
-
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -23,15 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def read_file(file_path: str) -> str:
-    """
-    Reads the content of a file based on its extension.
-
-    Args:
-        file_path (str): The path to the file.
-
-    Returns:
-        str: The content of the file or an error message if the file type is unsupported.
-    """
     file_extension = os.path.splitext(file_path)[1].lower()
     logger.info(f"Reading file: {file_path} with extension: {file_extension}")
 
@@ -49,15 +37,6 @@ def read_file(file_path: str) -> str:
 
 
 def read_pdf(pdf_path: str) -> str:
-    """
-    Reads and extracts text from a PDF file using PyMuPDF.
-
-    Args:
-        pdf_path (str): The path to the PDF file.
-
-    Returns:
-        str: Extracted text from the PDF or an empty string if an error occurs.
-    """
     logger.info(f"Opening PDF file: {pdf_path}")
     try:
         doc = fitz.open(pdf_path)
@@ -85,17 +64,7 @@ def read_pdf(pdf_path: str) -> str:
         logger.error(f"An error occurred while reading PDF file '{pdf_path}': {e}")
         return ""
 
-
 def read_doc(doc_path: str) -> str:
-    """
-    Reads and extracts text from a DOC or DOCX file using UnstructuredWordDocumentLoader.
-
-    Args:
-        doc_path (str): The path to the DOC/DOCX file.
-
-    Returns:
-        str: Extracted text from the document or an error message if an error occurs.
-    """
     logger.info(f"Reading DOC/DOCX file: {doc_path}")
     try:
         loader = UnstructuredWordDocumentLoader(doc_path)
@@ -110,17 +79,7 @@ def read_doc(doc_path: str) -> str:
         logger.error(f"Error reading DOC/DOCX file '{doc_path}': {e}")
         return f"Error reading DOC file: {str(e)}"
 
-
 def read_excel(excel_path: str) -> str:
-    """
-    Reads and extracts text from an Excel file using openpyxl.
-
-    Args:
-        excel_path (str): The path to the Excel file.
-
-    Returns:
-        str: Extracted text from the Excel file or an error message if an error occurs.
-    """
     logger.info(f"Reading Excel file: {excel_path}")
     try:
         wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
@@ -138,17 +97,7 @@ def read_excel(excel_path: str) -> str:
         logger.error(f"Error reading Excel file '{excel_path}': {e}")
         return f"Error reading Excel file: {str(e)}"
 
-
 def read_txt(txt_path: str) -> str:
-    """
-    Reads and extracts text from a TXT file.
-
-    Args:
-        txt_path (str): The path to the TXT file.
-
-    Returns:
-        str: The content of the TXT file or an error message if an error occurs.
-    """
     logger.info(f"Reading TXT file: {txt_path}")
     try:
         with open(txt_path, 'r', encoding='utf-8') as txt_file:
