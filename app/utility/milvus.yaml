@@ -106,7 +106,7 @@ minio:
   # This configuration must be set identical to the environment variable MINIO_ACCESS_KEY_ID, which is necessary for starting MinIO or S3.
   # The default value applies to MinIO or S3 service that started with the default docker-compose.yml file.
   accessKeyID: xyz
-  secretAccessKey: xyz
+  secretAccessKey: xy
 
   useSSL: true # Switch value to control if to access the MinIO or S3 service through SSL.
   ssl:
