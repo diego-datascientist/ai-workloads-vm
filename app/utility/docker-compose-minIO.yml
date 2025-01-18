@@ -40,7 +40,7 @@ services:
 
   nemollm-embedding:
     container_name: nemo-retriever-embedding-microservice
-    image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:1.0.1
+    image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:latest
     ports:
     - "9080:8000"
     expose:
@@ -65,13 +65,13 @@ services:
 
   nemollm-inference:
     container_name: nemollm-inference-microservice
-    image: nvcr.io/nim/meta/llama3-8b-instruct:1.0.3
+    image: nvcr.io/nim/meta/llama3-8b-instruct:latest
     command: [
       "python3", 
       "-m", 
       "vllm_nvext.entrypoints.openai.api_server",
       "--model", "/opt/nim/.cache/model",
-      "--dtype=half"
+      "--dtype", "float16"
     ]
     volumes:
       - ${MODEL_DIRECTORY}:/opt/nim/.cache
@@ -81,8 +81,9 @@ services:
     expose:
       - "8000"
     environment:
+      CUDA_LAUNCH_BLOCKING: 1
       NGC_API_KEY: ${NGC_API_KEY}
-    shm_size: 20gb
+    shm_size: 32gb
     deploy:
       resources:
         reservations:

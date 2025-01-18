@@ -21,14 +21,12 @@ services:
     container_name: milvus-standalone
     image: milvusdb/milvus:v2.5.0
     command: ["milvus", "run", "standalone"]
-    env_file:
-      - /home/daguero/idp-vm/app/utility/.env
     environment:
       ETCD_ENDPOINTS: etcd:2379
     volumes:
-      - /home/daguero/idp-vm/app/utility/helper_functions/certificates/red_ca_407BD48D-56C8-5429-E46E-58236CD413C0.crt:/etc/ssl/certs/red_ca_407BD48D-56C8-5429-E46E-58236CD413C0.crt
       - /home/daguero/idp-vm/app/utility/milvus.yaml:/milvus/configs/milvus.yaml
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+      - /home/daguero/idp-vm/app/utility/helper_functions/certificates:/milvus/certs
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -43,7 +41,7 @@ services:
 
   nemollm-embedding:
     container_name: nemo-retriever-embedding-microservice
-    image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:1.0.1
+    image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:latest
     ports:
     - "9080:8000"
     expose:
@@ -68,13 +66,13 @@ services:
 
   nemollm-inference:
     container_name: nemollm-inference-microservice
-    image: nvcr.io/nim/meta/llama3-8b-instruct:1.0.3
+    image: nvcr.io/nim/meta/llama3-8b-instruct:latest
     command: [
       "python3", 
       "-m", 
       "vllm_nvext.entrypoints.openai.api_server",
       "--model", "/opt/nim/.cache/model",
-      "--dtype=half"
+      "--dtype", "float16"
     ]
     volumes:
       - ${MODEL_DIRECTORY}:/opt/nim/.cache
@@ -84,8 +82,9 @@ services:
     expose:
       - "8000"
     environment:
+      CUDA_LAUNCH_BLOCKING: 1
       NGC_API_KEY: ${NGC_API_KEY}
-    shm_size: 20gb
+    shm_size: 32gb
     deploy:
       resources:
         reservations:
@@ -123,7 +122,6 @@ services:
           devices:
             - driver: nvidia
               device_ids: ['${RANKING_MS_GPU_ID:-3}']
-              # count: ${INFERENCE_GPU_COUNT:-all}
               capabilities: [gpu]
  
 
