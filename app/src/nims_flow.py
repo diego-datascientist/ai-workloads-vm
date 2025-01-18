@@ -1,4 +1,4 @@
-import os
+import os, sys
 import logging
 from dotenv import load_dotenv
 from operator import itemgetter
@@ -17,7 +17,20 @@ from .include.utils import (
     get_ranking_model,
     get_chat_model
 )
+
+from pymilvus import Collection, connections
 import warnings
+import time
+import tracemalloc
+import psutil  # Added for CPU usage
+import csv
+
+# Update your imports as needed
+src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(src_path)
+from utility.vertex_llm import gcp_vertex_llm
+
+
 warnings.simplefilter("ignore", category=UserWarning)
 
 # Load environment variables from .env file
@@ -52,6 +65,40 @@ logger.info("Vector Database initialized.")
 ranker = get_ranking_model()
 
 logger.info("Reranker initialized successfully.")
+
+def start_performance_metrics():
+    # ------------ Performance metrics start ------------------
+    step_start_time = time.time()
+    memory_before, _ = tracemalloc.get_traced_memory()
+    cpu_before = psutil.cpu_percent(interval=None)
+    return step_start_time, memory_before, cpu_before
+
+def end_performance_metrics(step_start_time, memory_before, cpu_before, text, file_path):
+    # ------------ Performance metrics end ------------------
+    cpu_after = psutil.cpu_percent(interval=None)
+    memory_after, _ = tracemalloc.get_traced_memory()
+    step_end_time = time.time()
+
+    elapsed_time = step_end_time - step_start_time
+    memory_diff = (memory_after - memory_before) / (1024 * 1024)
+    cpu_usage = cpu_after - cpu_before
+
+    # Log to console/file using logger
+    logger.info(
+        f"[{text}] Time: {elapsed_time:.4f}s, "
+        f"Memory Diff: {memory_diff:.4f} MB, "
+        f"CPU usage diff: {cpu_usage:.2f}%"
+    )
+
+    # Append the data to the CSV file
+    with open(file_path, "a", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            text,
+            f"{elapsed_time:.4f}",
+            # f"{memory_diff:.4f}",
+            # f"{cpu_usage:.2f}"
+        ])
 
 
 def ingestion(filename: str, filepath: str = "../Data"):
@@ -202,17 +249,41 @@ def truncate_context(context: str, max_tokens: int = MAX_CONTEXT_TOKENS):
     return context
 
 
-def answer_query(query: str):
+def answer_query(query: str, vertex = False):
     global vs
+    file_path = "/home/daguero/idp-vm/app/utility/query_metrics.csv"
+    # ------------ Performance metrics start ------------------
+    step_start_time, memory_before, cpu_before = start_performance_metrics()
+
     if vs is None:
         vs = create_vectorstore_langchain(document_embedder=document_embedder)
         logger.info("Vector store recreated as it was None.")
+    connections.connect(alias="default", host="localhost", port="19530")
+    collection_name = "default_collection"  # Replace with your collection name
+    collection = Collection(collection_name)
+    collection.load()
+    # ------------ Performance metrics end ------------------
+    end_performance_metrics(step_start_time, memory_before, cpu_before, "vectorstore_initialization", file_path)
+    # -------------------------------------------------------
+
+
+    # ------------ Performance metrics start ------------------
+    step_start_time, memory_before, cpu_before = start_performance_metrics()
 
     # Initial similarity search
     initial_docs = vs.similarity_search(query, SEARCH_LIMIT)
+    # import pdb; pdb.set_trace()
+    
     logger.info(f"Initial retrieved {len(initial_docs)} documents for query: '{query}'")
 
+    # ------------ Performance metrics end ------------------
+    end_performance_metrics(step_start_time, memory_before, cpu_before, "similarity_search", file_path)
+    # -------------------------------------------------------
+
     # Rerank the initial documents
+    # ------------ Performance metrics start ------------------
+    step_start_time, memory_before, cpu_before = start_performance_metrics()
+
     try:
         reranked_docs = ranker.compress_documents(query=query, documents=initial_docs)
         logger.info(f"Reranked {len(reranked_docs)} documents.")
@@ -225,12 +296,17 @@ def answer_query(query: str):
 
     # Select top-k documents after reranking
     top_k_docs = reranked_docs[:TOP_K]
-    context = "\n\n".join([doc.page_content for doc in top_k_docs])
+    context = "\n\n".join([doc.metadata.get("metadata") for doc in top_k_docs])
     logger.debug(f"Full context length: {len(tokenizer.encode(context))} tokens")
 
     # Truncate the context if necessary
     context = truncate_context(context)
     logger.info(f"Truncated context to {len(tokenizer.encode(context))} tokens")
+    # ------------ Performance metrics end ------------------
+    end_performance_metrics(step_start_time, memory_before, cpu_before, "re-ranking", file_path)
+    # -------------------------------------------------------
+    
+    # import pdb; pdb.set_trace()
 
     # Prepare the prompt
     system_message = (
@@ -241,33 +317,49 @@ def answer_query(query: str):
     )
     user_message = "User Question: " + query
 
-    inference_client = get_chat_model()
-
     # Generate response using the local inference model
-    try:
-        response = inference_client.invoke(
-            input=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_message}
-            ],
-            temperature=0,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0
-        )
-        full_response = response.content
-        logger.info("Response generated successfully.")
-    except Exception as e:
-        logger.error(f"LLM invocation failed: {e}")
-        full_response = "I'm sorry, I couldn't process your request at the moment."
+    # ------------ Performance metrics start ------------------
+    step_start_time, memory_before, cpu_before = start_performance_metrics()
+    # logger.info(f"System Message: {system_message}")
+    logger.info(f"User Message: {user_message}")
+    file_name = "\n\n".join([doc.page_content for doc in top_k_docs])
+    logger.info(f"Documents: {file_name}")
 
-    return full_response.strip()
+    if vertex:
+        
+        content = gcp_vertex_llm(system_message, user_message)
+        # ------------ Performance metrics end ------------------
+        end_performance_metrics(step_start_time, memory_before, cpu_before, "Vertex LLM Response", file_path)
+        # -------------------------------------------------------
+        return content
+    else:
+        inference_client = get_chat_model()
+        try:
+            response = inference_client.invoke(
+                input=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=0,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0
+            )
+            full_response = response.content
+            logger.info("Response generated successfully.")
+        except Exception as e:
+            logger.error(f"LLM invocation failed: {e}")
+            full_response = "I'm sorry, I couldn't process your request at the moment."
+        # ------------ Performance metrics end ------------------
+        end_performance_metrics(step_start_time, memory_before, cpu_before, "Nemo LLM Response", file_path)
+        # -------------------------------------------------------
+        return full_response.strip()
 
 
-def rag_results_nims(query: str):
+def rag_results_nims(query: str, vertex = False):
     logger.info("Received query for RAG processing.")
     try:
-        answer = answer_query(query)
+        answer = answer_query(query, vertex = vertex)
         logger.info("RAG processing completed successfully.")
         return answer
     except Exception as e:

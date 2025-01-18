@@ -5,8 +5,9 @@ import logging
 from hashlib import md5
 from typing import Optional, Tuple
 import boto3
-import time
+import time, csv
 import tracemalloc
+import psutil  # Added for CPU usage
 
 src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(src_path)
@@ -26,65 +27,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def performance_metrics_header(file_path):
+    with open(file_path, "a", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Stage", "ExecutionTime(sec)", "MemoryUsage(MB)", "CPU-Usage(%)"])
+def start_performance_metrics():
+    # ------------ Performance metrics start ------------------
+    step_start_time = time.time()
+    memory_before, _ = tracemalloc.get_traced_memory()
+    cpu_before = psutil.cpu_percent(interval=15.0)
+    return step_start_time, memory_before, cpu_before
 
-def calculate_file_hash(file) -> str:
-    logger.debug("Calculating file hash.")
-    hasher = md5()
-    try:
-        for chunk in iter(lambda: file.read(4096), b""):
-            hasher.update(chunk)
-        file.seek(0)
-    except Exception as e:
-        logger.error(f"Error calculating file hash: {e}")
-        raise
-    return hasher.hexdigest()
+def end_performance_metrics(step_start_time, memory_before, cpu_before, text, file_path):
+    # ------------ Performance metrics end ------------------
+    cpu_after = psutil.cpu_percent(interval=None)
+    memory_after, _ = tracemalloc.get_traced_memory()
+    step_end_time = time.time()
 
-def process_uploaded_file(uploaded_file, flag:bool) -> Optional[str]:
-    try:
-        data_dir = "Data"
-        os.makedirs(data_dir, exist_ok=True)
+    elapsed_time = step_end_time - step_start_time
+    memory_diff = (memory_after - memory_before) / (1024 * 1024)
+    cpu_usage = cpu_after
 
-        file_name = f"{uuid.uuid4().hex}.pdf"
-        file_path = os.path.join(data_dir, file_name)
-        logger.info(f"Saving uploaded file to {file_path}.")
+    # Log to console/file using logger
+    logger.info(
+        f"[{text}] Time: {elapsed_time:.4f}s, "
+        f"Memory Diff: {memory_diff:.4f} MB, "
+        f"CPU usage diff: {cpu_usage:.2f}%"
+    )
 
-        with open(file_path, "wb") as f:
-            uploaded_file.seek(0)
-            f.write(uploaded_file.read())
+    # Append the data to the CSV file
+    with open(file_path, "a", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            text,
+            f"{elapsed_time:.4f}",
+            # f"{memory_diff:.4f}",
+            # f"{cpu_usage:.2f}"
+        ])
 
-        if flag:
-            ingestion(file_path)
-        else:
-            openai_ingestion(file_path)
-        logger.info("Processing PDF and storing embeddings.")
-        logger.info("File processed and embeddings stored successfully.")
 
-        return file_path
 
-    except Exception as e:
-        logger.error(f"Error processing the file '{uploaded_file.name}': {e}")
-        return None
+def chatbot_response(query: str, history: list, flag: bool) -> Optional[str]:
+    """Generates a chatbot response based on the query and chat history."""
+    file_path = "/home/daguero/idp-vm/app/utility/query_metrics.csv"
+    # ------------ Performance metrics start ------------------
+    step_start_time, memory_before, cpu_before = start_performance_metrics()
 
-def chatbot_response(query: str, history: list, flag:bool) -> Optional[str]:
     try:
         conversation_context = " ".join([f"User: {q} Bot: {a}" for q, a in history])
         logger.debug("Fetching relevant segments from Milvus.")
         final_answer = None
+
         if flag:
-            final_answer = rag_results_nims(query)
-        else: 
+            final_answer = rag_results_nims(query, True)
+        else:
             relevant = rag_results_openai(query)
             logger.debug("Generating chatbot response.")
             final_answer = chatbot(query, relevant, conversation_context)
+
+        # ------------ Performance metrics end ------------------
+        end_performance_metrics(step_start_time, memory_before, cpu_before, "Chatbot_response", file_path)
+        # -------------------------------------------------------
+
         return final_answer
+
     except Exception as e:
         logger.error(f"Error generating chatbot response: {e}")
         return None
 
+
 def main():
+    """Main entry point to test chatbot response via a console input."""
+    file_path = "/home/daguero/idp-vm/app/utility/query_metrics.csv"
     user_query = input("Enter your question: ")
-    
-    start_time = time.time()
+    performance_metrics_header(file_path)
     tracemalloc.start()
 
     chat_history = []
@@ -92,21 +108,18 @@ def main():
 
     print("\nHere's my answer:")
     print(response)
-    memory_used, _ = tracemalloc.get_traced_memory()
-    elapsed_time = time.time() - start_time
+    
+    # Stop memory tracking
     tracemalloc.stop()
-
-    logger.info(f"Chatbot response generated in {elapsed_time:.2f} seconds.")
-    logger.info(f"Memory used: {memory_used / (1024 * 1024):.2f} MB")
 
     if chat_history:
         print("### Chat History")
-        for i, (user_query, bot_response) in enumerate(chat_history, 1):
-            print(f"Q{i}: {user_query}")
+        for i, (uq, bot_response) in enumerate(chat_history, 1):
+            print(f"Q{i}: {uq}")
             print(f"A{i}: {bot_response}")
+
     print("Powered By DNN")
 
 
 if __name__ == "__main__":
     main()
-

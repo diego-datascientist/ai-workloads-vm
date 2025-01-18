@@ -98,26 +98,26 @@ minio:
   # minio.address and minio.port together generate the valid access to MinIO or S3 service.
   # MinIO preferentially acquires the valid IP address from the environment variable MINIO_ADDRESS when Milvus is started.
   # Default value applies when MinIO or S3 is running on the same network with Milvus.
-  address: 10.168.15.213
+  address: 10.168.15.236
   port: 8111 # Port of MinIO or S3 service.
   # Access key ID that MinIO or S3 issues to user for authorized access.
   # Environment variable: MINIO_ACCESS_KEY_ID or minio.accessKeyID
   # minio.accessKeyID and minio.secretAccessKey together are used for identity authentication to access the MinIO or S3 service.
   # This configuration must be set identical to the environment variable MINIO_ACCESS_KEY_ID, which is necessary for starting MinIO or S3.
   # The default value applies to MinIO or S3 service that started with the default docker-compose.yml file.
-  accessKeyID: XYZ
-  secretAccessKey: XYZ
+  accessKeyID: LNCPH522WKPM08US4H3E
+  secretAccessKey: q9wzLrw7DP4tchCA5yxQHot6tihbKHVsw6OrD19L
 
   useSSL: true # Switch value to control if to access the MinIO or S3 service through SSL.
   ssl:
-    tlsCACert: /home/daguero/idp-vm/app/utility/helper_functions/certificates/red_ca_407BD48D-56C8-5429-E46E-58236CD413C0.crt # path to your CACert file
+    tlsCACert: /milvus/certs/red_ca_8A5EC7E9-B579-50C7-FA0D-197589C7D6A8.crt # path to your CACert file
   # Name of the bucket where Milvus stores data in MinIO or S3.
   # Milvus 2.0.0 does not support storing data in multiple buckets.
   # Bucket with this name will be created if it does not exist. If the bucket already exists and is accessible, it will be used directly. Otherwise, there will be an error.
   # To share an MinIO instance among multiple Milvus instances, consider changing this to a different value for each Milvus instance before you start them. For details, see Operation FAQs.
   # The data will be stored in the local Docker if Docker is used to start the MinIO service locally. Ensure that there is sufficient storage space.
   # A bucket name is globally unique in one MinIO or S3 instance.
-  bucketName: milvus-db
+  bucketName: "milvus-db"
   # Root prefix of the key to where Milvus stores data in MinIO or S3.
   # It is recommended to change this parameter before starting Milvus for the first time.
   # To share an MinIO instance among multiple Milvus instances, consider changing this to a different value for each Milvus instance before you start them. For details, see Operation FAQs.

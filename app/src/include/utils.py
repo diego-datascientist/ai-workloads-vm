@@ -10,7 +10,6 @@ from langchain.text_splitter import SentenceTransformersTokenTextSplitter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings, NVIDIARerank
 from langchain_openai import OpenAIEmbeddings
 
-
 NLIST = 128
 CHUNK_SIZE = 510
 METRIC_TYPE = "L2"  # Alternatives: "COSINE", "IP"
@@ -54,6 +53,12 @@ def get_chat_model():
         top_p=1,
         max_tokens=1024,
     )
+
+def get_vertex_model():
+    ## directly being used
+    pass
+
+
 
 def get_openai_chat_model():
     # Retrieve OpenAI API key from environment variables
